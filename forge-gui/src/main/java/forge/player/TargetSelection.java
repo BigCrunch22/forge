@@ -20,12 +20,10 @@ package forge.player;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import forge.game.*;
-import forge.game.ability.AbilityKey;
 import forge.game.card.Card;
 import forge.game.card.CardCollection;
 import forge.game.card.CardUtil;
 import forge.game.card.CardView;
-import forge.game.player.Player;
 import forge.game.player.PlayerCollection;
 import forge.game.player.PlayerView;
 import forge.game.spellability.SpellAbility;
@@ -33,7 +31,6 @@ import forge.game.spellability.SpellAbilityStackInstance;
 import forge.game.spellability.StackItemView;
 import forge.game.spellability.TargetRestrictions;
 import forge.game.staticability.StaticAbilityMustTarget;
-import forge.game.trigger.TriggerType;
 import forge.game.zone.Zone;
 import forge.game.zone.ZoneType;
 import forge.gamemodes.match.input.InputSelectTargets;
@@ -67,7 +64,6 @@ public class TargetSelection {
     }
 
     private boolean bTargetingDone = false;
-    private boolean targetChosenTriggerFired = false;
 
     private boolean isMandatory() {
         // even if its an optionalTrigger, the targeting is still mandatory
@@ -96,9 +92,6 @@ public class TargetSelection {
         }
 
         if (this.bTargetingDone && hasEnoughTargets || hasAllTargets || ability.isDividedAsYouChoose() && divisionValues == null && ability.getStillToDivide() == 0) {
-            if (numTargeted > 0) {
-                fireTargetChosenTrigger(false);
-            }
             return true;
         }
 
@@ -143,11 +136,7 @@ public class TargetSelection {
                     candidates.remove(choice);
                 }
             }
-            boolean added = ability.getTargets().addAll(choices);
-            if (added && !choices.isEmpty()) {
-                fireTargetChosenTrigger(true);
-            }
-            return added;
+            return ability.getTargets().addAll(choices);
         }
 
         List<Card> validTargets = CardUtil.getValidCardsToTarget(ability);
@@ -170,11 +159,7 @@ public class TargetSelection {
             if (minTargets != 0) {
                 List<GameEntity> nonCardTargets = tgt.getAllCandidates(this.ability, true);
                 if (nonCardTargets.size() == 1) {
-                    boolean added = ability.getTargets().add(nonCardTargets.get(0));
-                    if (added) {
-                        fireTargetChosenTrigger(false);
-                    }
-                    return added;
+                    return ability.getTargets().add(nonCardTargets.get(0));
                 }
                 if (nonCardTargets.isEmpty()) {
                     return false;
@@ -188,11 +173,7 @@ public class TargetSelection {
             if (ability.isDividedAsYouChoose()) {
                 ability.addDividedAllocation(validTargets.get(0), ability.getStillToDivide());
             }
-            boolean added = ability.getTargets().add(validTargets.get(0));
-            if (added) {
-                fireTargetChosenTrigger(false);
-            }
-            return added;
+            return ability.getTargets().add(validTargets.get(0));
         }
         final Map<PlayerView, Object> playersWithValidTargets = Maps.newHashMap();
         for (Card card : validTargets) {
@@ -213,24 +194,6 @@ public class TargetSelection {
         }
         // some inputs choose cards one-by-one and need to be called again
         return choiceResult && chooseTargets(numTargets, divisionValues, filter, optional, canFilterMustTarget);
-    }
-
-    // Fires once, whenever this ability's targeting completes with one or more targets chosen -
-    // whether chosen at random or manually - so any "select one or more targets" trigger works
-    // either way; Random$ True on the trigger's own script is what gates it to the random case.
-    private void fireTargetChosenTrigger(boolean random) {
-        if (targetChosenTriggerFired) {
-            return;
-        }
-        targetChosenTriggerFired = true;
-        final Player activator = ability.getActivatingPlayer();
-        final Map<AbilityKey, Object> runParams = AbilityKey.mapFromPlayer(activator);
-        runParams.put(AbilityKey.Cause, ability);
-        runParams.put(AbilityKey.Targets, ability.getTargets().getTargetEntities());
-        if (random) {
-            runParams.put(AbilityKey.Random, true);
-        }
-        activator.getGame().getTriggerHandler().runTrigger(TriggerType.TargetChosenAll, runParams, false);
     }
 
     private boolean chooseCardFromList(final List<Card> choices, final boolean targeted, final boolean mandatory) {
@@ -353,9 +316,6 @@ public class TargetSelection {
         while (!bTargetingDone) {
             if (ability.isMaxTargetChosen() || (numTargets != null && ability.getTargets().size() == numTargets)) {
                 bTargetingDone = true;
-                if (!ability.getTargets().isEmpty()) {
-                    fireTargetChosenTrigger(false);
-                }
                 return true;
             }
 
@@ -377,9 +337,6 @@ public class TargetSelection {
             } else {// 'FINISH TARGETING' chosen
                 bTargetingDone = true;
             }
-        }
-        if (!ability.getTargets().isEmpty()) {
-            fireTargetChosenTrigger(false);
         }
         return true;
     }

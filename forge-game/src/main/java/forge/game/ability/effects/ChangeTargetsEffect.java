@@ -2,7 +2,6 @@ package forge.game.ability.effects;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.function.Predicate;
 
 import com.google.common.collect.Iterables;
@@ -12,14 +11,12 @@ import org.apache.commons.lang3.tuple.Pair;
 import forge.game.GameEntity;
 import forge.game.GameObject;
 import forge.game.GameObjectPredicates;
-import forge.game.ability.AbilityKey;
 import forge.game.ability.SpellAbilityEffect;
 import forge.game.card.Card;
 import forge.game.player.Player;
 import forge.game.spellability.SpellAbility;
 import forge.game.spellability.SpellAbilityStackInstance;
 import forge.game.spellability.TargetChoices;
-import forge.game.trigger.TriggerType;
 import forge.game.zone.MagicStack;
 import forge.game.zone.ZoneType;
 import forge.util.Aggregates;
@@ -98,7 +95,7 @@ public class ChangeTargetsEffect extends SpellAbilityEffect {
                     if (div != null) {
                         newTargetBlock.addDividedAllocation(newTarget, div);
                     }
-                    replaceIn.updateTarget(oldTargetBlock, sa.getHostCard());
+                    replaceIn.updateTarget(oldTargetBlock, sa.getHostCard(), false);
                 }
             } else if (sa.hasParam("RandomTarget")) {
                 // CR 115.7a: changing "the target(s)" is all-or-nothing, so picks are staged
@@ -122,12 +119,6 @@ public class ChangeTargetsEffect extends SpellAbilityEffect {
                     changingTgtSI = changingTgtSI.getSubInstance();
                 }
                 if (feasible) {
-                    // CR 608.2f: a single spell's own targets change together (nothing stops
-                    // that being simultaneous), but a redirect touching several spells at once
-                    // (e.g. Chef's Kiss targeting two spells) has no such requirement across
-                    // them - so each spell gets its own trigger, fired right here as its picks
-                    // are committed, rather than one batch covering every spell in `sas`.
-                    List<GameEntity> randomlyChosenTargets = new ArrayList<>();
                     for (Pair<SpellAbilityStackInstance, GameEntity> pick : picks) {
                         SpellAbilityStackInstance pickSI = pick.getKey();
                         SpellAbility pickSA = pickSI.getSpellAbility();
@@ -139,10 +130,8 @@ public class ChangeTargetsEffect extends SpellAbilityEffect {
                         if (pickSA.isDividedAsYouChoose()) {
                             pickSA.addDividedAllocation(choice, div);
                         }
-                        pickSI.updateTarget(oldTarget, sa.getHostCard());
-                        randomlyChosenTargets.add(choice);
+                        pickSI.updateTarget(oldTarget, sa.getHostCard(), true);
                     }
-                    fireRandomTargetChosenTrigger(chooser, sa, randomlyChosenTargets);
                 }
             } else {
                 while (changingTgtSI != null) {
@@ -158,7 +147,7 @@ public class ChangeTargetsEffect extends SpellAbilityEffect {
                                 if (changingTgtSA.isDividedAsYouChoose()) {
                                     changingTgtSA.addDividedAllocation(newTarget, div);
                                 }
-                                changingTgtSI.updateTarget(oldTarget, sa.getHostCard());
+                                changingTgtSI.updateTarget(oldTarget, sa.getHostCard(), false);
                             }
                         } else {
                             // Update targets, with a potential new target
@@ -170,25 +159,12 @@ public class ChangeTargetsEffect extends SpellAbilityEffect {
                             Predicate<GameObject> filter = sa.hasParam("TargetRestriction") ? GameObjectPredicates.restriction(sa.getParam("TargetRestriction").split(","), activator, source, sa) : null;
                             TargetChoices oldTarget = changingTgtSA.getTargets();
                             chooser.getController().chooseNewTargetsFor(changingTgtSA, filter, false);
-                            changingTgtSI.updateTarget(oldTarget, sa.getHostCard());
+                            changingTgtSI.updateTarget(oldTarget, sa.getHostCard(), false);
                         }
                     }
                     changingTgtSI = changingTgtSI.getSubInstance();
                 }
             }
         }
-    }
-
-    // Fires once per targeted spell whose chain got a random replacement, right after that
-    // spell's picks are committed above - see the RandomTarget branch.
-    private void fireRandomTargetChosenTrigger(Player chooser, SpellAbility sa, List<GameEntity> targets) {
-        if (targets.isEmpty()) {
-            return;
-        }
-        final Map<AbilityKey, Object> runParams = AbilityKey.mapFromPlayer(chooser);
-        runParams.put(AbilityKey.Cause, sa);
-        runParams.put(AbilityKey.Targets, targets);
-        runParams.put(AbilityKey.Random, true);
-        chooser.getGame().getTriggerHandler().runTrigger(TriggerType.TargetChosenAll, runParams, false);
     }
 }

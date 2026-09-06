@@ -64,6 +64,15 @@ public class TriggerBecomesTargetOnce extends Trigger {
         if (!matchesValidParam("ValidCause", runParams.get(AbilityKey.Cause))) {
             return false;
         }
+        if (hasParam("Random")) {
+            // Random is derived by the caller (SpellAbilityStackInstance#updateTarget) from the
+            // specific mechanism doing the retargeting (e.g. ChangeTargetsEffect's RandomTarget$
+            // mode), not by inspecting a TargetsAtRandom$ param on the retargeted ability itself -
+            // that ability was, after all, targeted normally before being redirected.
+            if (!(boolean) runParams.getOrDefault(AbilityKey.Random, false)) {
+                return false;
+            }
+        }
         return true;
     }
 
